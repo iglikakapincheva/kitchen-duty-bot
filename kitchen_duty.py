@@ -26,27 +26,29 @@ from slack_sdk.errors import SlackApiError
 STATE_PATH = Path(__file__).parent / "state.json"
 CHANNEL_NAME = "berlinoffice"
 
-MESSAGE_TEMPLATE = """Kitchen Duty Rotation
+MESSAGE_TEMPLATE = """🧽 Kitchen Duty Rotation
 Hi <!channel>,
 
-A big thank you to our Kitchen Duty heroes from last week{last_week_thanks} — great job! Your effort and commitment are truly appreciated.
+A big thank you 🙌 to our Kitchen Duty heroes from last week{last_week_thanks} — great job! Your effort and commitment are truly appreciated.
 
 Here is the new rotation for next week:
 
    {this_week_mentions}
 
-Don't forget your mission:
-• Kindly remind teammates to collect their cups and glasses
-• If you are on the Sales floor, please make sure to bring all empty cups and glasses down to the kitchen
-• Run the dishwasher when need it, specially after lunch or/and at the end of the day
-• Make sure cutting items are clean and returned to their proper place
+Don't forget your mission 🎯:
+• ☕ Kindly remind teammates to collect their cups and glasses
+• 🧴 If you are on the Sales floor, please make sure to bring all empty cups and glasses down to the kitchen
+• 🍽️ Run the dishwasher when needed, especially after lunch and/or at the end of the day
+• 🔪 Make sure cutting items are clean and returned to their proper place
 
-Coffee machine care:
-• Clean the drip tray
-• Empty the coffee grounds
-• Refill the water
+Coffee machine care ☕:
+• 💧 Clean the drip tray
+• 🌱 Empty the coffee grounds
+• 🚰 Refill the water
 
-Thank you for helping keep our shared space clean and enjoyable for everyone!"""
+Thank you 💛 for helping keep our shared space clean and enjoyable for everyone!"""
+
+EXCLUDED_EMAIL_MARKER = ".ext"  # skip anyone whose email local-part contains this
 
 
 def load_state() -> dict:
@@ -88,12 +90,18 @@ def get_channel_members(client: WebClient) -> list[str]:
         if not cursor:
             break
 
-    # Filter out bots
+    # Filter out bots and anyone whose email marks them as external
+    # (email local-part contains ".ext", e.g. john.ext@andercore.com)
     human_ids = []
     for uid in member_ids:
         info = client.users_info(user=uid)["user"]
-        if not info.get("is_bot") and uid != "USLACKBOT":
-            human_ids.append(uid)
+        if info.get("is_bot") or uid == "USLACKBOT":
+            continue
+        email = info.get("profile", {}).get("email", "")
+        local_part = email.split("@")[0] if email else ""
+        if EXCLUDED_EMAIL_MARKER in local_part:
+            continue
+        human_ids.append(uid)
 
     return human_ids, channel_id
 
