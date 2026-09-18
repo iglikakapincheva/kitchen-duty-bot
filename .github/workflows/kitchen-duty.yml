@@ -2,11 +2,19 @@ name: Kitchen Duty Rotation
 
 on:
   schedule:
+    # 13:00 UTC = 14:00 Berlin time in winter (CET) / 15:00 in summer (CEST).
+    # GitHub cron doesn't adjust for daylight saving — see README for the
+    # one-line fix twice a year if you want it exact.
     - cron: "0 13 * * 5"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (preview only, no post, no state change)"
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: write  # needed so the workflow can commit the updated state.json
 
 jobs:
   post-rotation:
@@ -26,9 +34,11 @@ jobs:
       - name: Run rotation script
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: python kitchen_duty.py
 
       - name: Commit updated state
+        if: ${{ !inputs.dry_run }}
         run: |
           git config user.name "kitchen-duty-bot"
           git config user.email "actions@github.com"
