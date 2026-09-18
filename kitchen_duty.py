@@ -93,15 +93,26 @@ def get_channel_members(client: WebClient) -> list[str]:
     # Filter out bots and anyone whose email marks them as external
     # (email local-part contains ".ext", e.g. john.ext@andercore.com)
     human_ids = []
+    excluded = []
+    missing_email = []
     for uid in member_ids:
         info = client.users_info(user=uid)["user"]
         if info.get("is_bot") or uid == "USLACKBOT":
             continue
         email = info.get("profile", {}).get("email", "")
+        name = info.get("real_name") or info.get("name") or uid
+        if not email:
+            missing_email.append(name)
         local_part = email.split("@")[0] if email else ""
         if EXCLUDED_EMAIL_MARKER in local_part:
+            excluded.append(f"{name} ({email})")
             continue
         human_ids.append(uid)
+
+    print(f"Channel members found (excluding bots): {len(human_ids) + len(excluded)}")
+    print(f"Excluded as external: {excluded if excluded else 'none'}")
+    if missing_email:
+        print(f"WARNING: could not read email for these members (scope issue?): {missing_email}")
 
     return human_ids, channel_id
 
