@@ -97,4 +97,103 @@ def get_channel_members(client: WebClient) -> list[str]:
     missing_email = []
     for uid in member_ids:
         info = client.users_info(user=uid)["user"]
-        if info.get("is_bot")
+        if info.get("is_bot") or uid == "USLACKBOT":
+            continue
+        email = info.get("profile", {}).get("email", "")
+        name = info.get("real_name") or info.get("name") or uid
+        if not email:
+            missing_email.append(name)
+        local_part = email.split("@")[0] if email else ""
+        if EXCLUDED_EMAIL_MARKER in local_part:
+            excluded.append(f"{name} ({email})")
+            continue
+        human_ids.append(uid)
+
+    print(f"Channel members found (excluding bots): {len(human_ids) + len(excluded)}")
+    print(f"Excluded as external: {excluded if excluded else 'none'}")
+    if missing_email:
+        print(f"WARNING: could not read email for these members (scope issue?): {missing_email}")
+
+    return human_ids, channel_id
+
+
+def pick_next_four(state: dict, current_members: list[str]) -> list[str]:
+    """Pick 4 people, respecting the no-repeat-until-cycle-ends rule."""
+    # Drop anyone no longer in the channel; add anyone new to the pool
+    pool = [uid for uid in state["used_pool"] if uid in current_members]
+    for uid in current_members:
+        if uid not in pool and uid not in state.get("_picked_this_cycle", []):
+            pool.append(uid)
+
+    # If fewer than 4 remain in the pool, reset: everyone's eligible again
+    if len(pool) < 4:
+        pool = list(current_members)
+
+    random.shuffle(pool)
+    picked = pool[:4]
+    remaining = [uid for uid in pool if uid not in picked]
+
+    state["used_pool"] = remaining
+    return picked
+
+
+def mention(uid: str) -> str:
+    return f"<@{uid}>"
+
+
+def build_message(last_week: list[str], this_week: list[str]) -> str:
+    if last_week:
+        last_week_thanks = " " + ", ".join(mention(u) for u in last_week)
+    else:
+        last_week_thanks = ""  # first-ever run: skip the names, keep line generic
+
+    this_week_mentions = ", ".join(mention(u) for u in this_week[:-1])
+    this_week_mentions += f" and {mention(this_week[-1])}"
+
+    return MESSAGE_TEMPLATE.format(
+        last_week_thanks=last_week_thanks,
+        this_week_mentions=this_week_mentions,
+    )
+
+
+def main():
+    token = os.environ.get("SLACK_BOT_TOKEN")
+    if not token:
+        print("ERROR: SLACK_BOT_TOKEN environment variable not set.")
+        sys.exit(1)
+
+    dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
+    if dry_run:
+        print("=== DRY RUN — no message will be posted, no state will be saved ===")
+
+    client = WebClient(token=token)
+    state = load_state()
+
+    members, channel_id = get_channel_members(client)
+    if len(members) < 4:
+        print(f"ERROR: #{CHANNEL_NAME} has fewer than 4 human members.")
+        sys.exit(1)
+
+    this_week = pick_next_four(state, members)
+    message = build_message(state.get("last_week", []), this_week)
+
+    if dry_run:
+        print("----- Message that WOULD be posted -----")
+        print(message)
+        print("-----------------------------------------")
+        print("This week's 4 (not saved):", this_week)
+        return
+
+    try:
+        client.chat_postMessage(channel=channel_id, text=message)
+    except SlackApiError as e:
+        print(f"ERROR posting message: {e.response['error']}")
+        sys.exit(1)
+
+    state["last_week"] = this_week
+    save_state(state)
+    print("Posted successfully. This week's 4:", this_week)
+
+
+if __name__ == "__main__":
+    main()
