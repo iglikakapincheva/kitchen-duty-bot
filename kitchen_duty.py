@@ -36,15 +36,15 @@ Here is the new rotation for next week:
    {this_week_mentions}
 
 Don't forget your mission 🎯:
-• ☕ Kindly remind teammates to collect their cups and glasses
-• 🧴 If you are on the Sales floor, please make sure to bring all empty cups and glasses down to the kitchen
-• 🍽️ Run the dishwasher when needed, especially after lunch and/or at the end of the day
-• 🔪 Make sure cutting items are clean and returned to their proper place
+- ☕ Kindly remind teammates to collect their cups and glasses
+- 🧴 If you are on the Sales floor, please make sure to bring all empty cups and glasses down to the kitchen
+- 🍽️ Run the dishwasher when needed, especially after lunch and/or at the end of the day
+- 🔪 Make sure cutting items are clean and returned to their proper place
 
 Coffee machine care ☕:
-• 💧 Clean the drip tray
-• 🌱 Empty the coffee grounds
-• 🚰 Refill the water
+- 💧 Clean the drip tray
+- 🌱 Empty the coffee grounds
+- 🚰 Refill the water
 
 Thank you 💛 for helping keep our shared space clean and enjoyable for everyone!"""
 
@@ -162,6 +162,10 @@ def main():
         print("ERROR: SLACK_BOT_TOKEN environment variable not set.")
         sys.exit(1)
 
+    dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
+    if dry_run:
+        print("=== DRY RUN — no message will be posted, no state will be saved ===")
+
     client = WebClient(token=token)
     state = load_state()
 
@@ -172,6 +176,13 @@ def main():
 
     this_week = pick_next_four(state, members)
     message = build_message(state.get("last_week", []), this_week)
+
+    if dry_run:
+        print("----- Message that WOULD be posted -----")
+        print(message)
+        print("-----------------------------------------")
+        print("This week's 4 (not saved):", this_week)
+        return
 
     try:
         client.chat_postMessage(channel=channel_id, text=message)
